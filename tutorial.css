@@ -31,12 +31,20 @@ canvas { width: 100%; height: 100% }
   height: 100%;
 }
 
-.layerBG {
+.ribbon {
   position: absolute;
-  width: 10000;
-  height: 1000;
+  width: 10000px;
+  height: 1000px;
   background-color: rgba(0,132,180,0.25);
 }
+
+  .ribbon .layer-title {
+    position: absolute;
+    top: 10px;
+    left: 4000px;
+    font-size: 80;
+    color: rgba(0,132,180,0.75);
+  }
 
 .tweet {
   width: 300px;
