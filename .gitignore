@@ -1,0 +1,4 @@
+node_modules
+three.js
+*.xcf
+npm-debug.log
