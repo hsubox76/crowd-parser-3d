@@ -1,14 +1,64 @@
-var scene = new THREE.Scene();
-var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
-camera.position.z = 1100;
-camera.position.y = 300;
+// TODO
+// - set pan limits
+// - turn unscored tweets transparent when flattening layers
+// - do something about layer titles overlapping when flattening layers
+// - make text go away when zoomed out past a certain distance
+// - show more info when zoomed in closer than a certain distance?
+// - buttons next to each layer name - remove, solo, move fwd, move back
 
-var renderer = new THREE.CSS3DRenderer();
-renderer.setSize( window.innerWidth, window.innerHeight );
-document.getElementById( 'container' ).appendChild( renderer.domElement );
+var animate = function() {
+  requestAnimationFrame( animate );
+  tick++;
 
-var keepAddingTweets = true;
-var layers = [];
+  // check if camera has moved
+  if (!camera.position.equals(prevCameraPosition)) {
+    // if so, adjust ribbon width so you don't see the left/right ends of the ribbon
+    layers.forEach(function(layer) {
+      var newRibbonWidth = Math.abs(camera.position.z) * 5;
+      layer.ribbonEl.style.width = newRibbonWidth;
+      layer.ribbonEl.children[0].style.left = newRibbonWidth/2 - 1000;
+    });
+  }
+
+  prevCameraPosition.copy(camera.position);
+
+
+  // every 60 ticks add a tweet
+  if (tick >= 30 && keepAddingTweets) {
+    tick = 0;
+    var newTweetIndex = layers[0].tweets.length;
+    var x = newTweetIndex;
+    if (x > 23) {
+      x = x % 23;
+    }
+    for (var j = 0; j < layers.length; j++) {
+      addTweet(tweetData[x], layers[j], newTweetIndex);
+    }
+    //var addTweet = function(rawTweet, layerObj, index)
+  }
+
+  if (leftHover) {
+    camera.position.x -= scrollSpeed;
+    controls.target.x -= scrollSpeed;
+    for (var i = 0; i < layers.length; i++) {
+      layers[i].ribbonObj.position.x -= scrollSpeed;
+    }
+  }
+  if (rightHover) {
+    camera.position.x += scrollSpeed;
+    controls.target.x += scrollSpeed;
+    for (var i = 0; i < layers.length; i++) {
+      layers[i].ribbonObj.position.x += scrollSpeed;
+    }
+  }
+  TWEEN.update();
+  controls.update();
+  render();
+};
+
+var render = function() {
+  renderer.render( scene, camera );
+};
 
 var addTweet = function(rawTweet, layerObj, index) {
 
@@ -74,10 +124,13 @@ var makeTweetLayer = function(layerResultsProp, layerTitle, z) {
 
   var ribbon = document.createElement('div');
   ribbon.className = 'ribbon';
+  var ribbonWidth = Math.abs(camera.position.z) * 10;
+  ribbon.style.width = ribbonWidth;
 
   var ribbonText = document.createElement( 'div' );
   ribbonText.className = 'layer-title';
   ribbonText.textContent = layerTitle + ' layer';
+  ribbonText.style.left = ribbonWidth/2 - 1000;
   ribbon.appendChild( ribbonText );
 
   var ribbonObject = new THREE.CSS3DObject( ribbon );
@@ -103,139 +156,96 @@ var makeTweetLayer = function(layerResultsProp, layerTitle, z) {
   layers.push(layerObj);
 };
 
+var addButtonEvent = function (buttonId, eventName, callback) {
+  var button = document.getElementById( buttonId );
+  button.addEventListener( eventName, function ( event ) {
+    callback(event);
+  }, false);
+};
+
+var init = function() {
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+  camera.position.z = 1100;
+  camera.position.y = 300;
+
+  renderer = new THREE.CSS3DRenderer();
+  renderer.setSize( window.innerWidth, window.innerHeight );
+  document.getElementById( 'container' ).appendChild( renderer.domElement );
+
+  controls = new THREE.TrackballControls( camera, renderer.domElement );
+  controls.rotateSpeed = 1;
+  controls.maxDistance = 4000;
+  controls.addEventListener( 'change', render );
+
+  makeTweetLayer('baseLayerResults', 'word', layerSpacing);
+  makeTweetLayer('emoticonLayerResults', 'emoji', 0);
+
+  addButtonEvent('separate', 'click', function(event) {
+    for (var i = 1; i < layers.length; i++) {
+      layers[i].tweets.forEach(function(tweet) {
+        var tween = new TWEEN.Tween( tweet.obj.position )
+          .to( {z: 0}, 1000 )
+          .easing( TWEEN.Easing.Exponential.InOut )
+          .start();
+      });
+      var tween = new TWEEN.Tween( layers[i].ribbonObj.position )
+        .to( {z: -1}, 1000 )
+        .easing( TWEEN.Easing.Exponential.InOut )
+        .start();
+      layers[i].z = 0;
+    }
+  });
+
+  addButtonEvent('flatten', 'click', function(event) {
+    for (var i = 1; i < layers.length; i++) {
+      layers[i].tweets.forEach(function(tweet) {
+        var tween = new TWEEN.Tween( tweet.obj.position )
+          .to( {z: layerSpacing-1}, 1000 )
+          .easing( TWEEN.Easing.Exponential.InOut )
+          .start();
+      });
+      var tween = new TWEEN.Tween( layers[i].ribbonObj.position )
+        .to( {z: layerSpacing-2}, 1000 )
+        .easing( TWEEN.Easing.Exponential.InOut )
+        .start();
+      layers[i].z = layerSpacing-1;
+    }
+  });
+
+  addButtonEvent('stop', 'click', function(event) {
+    keepAddingTweets = false;
+  });
+
+  addButtonEvent('left', 'mouseover', function(event) {
+    leftHover = true;
+  });
+  addButtonEvent('left', 'mouseleave', function(event) {
+    leftHover = false;
+  });
+  addButtonEvent('right', 'mouseover', function(event) {
+    rightHover = true;
+  });
+  addButtonEvent('right', 'mouseleave', function(event) {
+    rightHover = false;
+  });
+
+  prevCameraPosition = new THREE.Vector3();
+  prevCameraPosition.copy(camera.position);
+};
+
+var scene, camera, renderer, controls, prevCameraPosition;
+
+var keepAddingTweets = true;
+var layers = [];
 var layerSpacing = 300;
-
-makeTweetLayer('baseLayerResults', 'word', layerSpacing);
-makeTweetLayer('emoticonLayerResults', 'emoji', 0);
-
-
-
-controls = new THREE.TrackballControls( camera, renderer.domElement );
-controls.rotateSpeed = 1;
-controls.addEventListener( 'change', render );
-
-var button = document.getElementById( 'separate' );
-button.addEventListener( 'click', function ( event ) {
-  // // darken front layer
-  // sentTweets.forEach(function(tweet) {
-  //   var tmpColor = tweet.el.style.backgroundColor;
-  //   var tmpArray = tmpColor.split(',');
-  //   tmpArray[3] = '0.8';
-  //   tmpColor = tmpArray.join(',');
-  //   tweet.el.style.backgroundColor = tmpColor;
-  // });
-  for (var i = 1; i < layers.length; i++) {
-    layers[i].tweets.forEach(function(tweet) {
-      var tween = new TWEEN.Tween( tweet.obj.position )
-        .to( {z: 0}, 1000 )
-        .easing( TWEEN.Easing.Exponential.InOut )
-        .start();
-    });
-    var tween = new TWEEN.Tween( layers[i].ribbonObj.position )
-      .to( {z: -1}, 1000 )
-      .easing( TWEEN.Easing.Exponential.InOut )
-      .start();
-    layers[i].z = 0;
-  }
-
-}, false );
-
-var button = document.getElementById( 'flatten' );
-button.addEventListener( 'click', function ( event ) {
-  // // lighten front layer
-  // sentTweets.forEach(function(tweet) {
-  //   var tmpColor = tweet.el.style.backgroundColor;
-  //   var tmpArray = tmpColor.split(',');
-  //   tmpArray[3] = '0.5';
-  //   tmpColor = tmpArray.join(',');
-  //   tweet.el.style.backgroundColor = tmpColor;
-  // });
-  for (var i = 1; i < layers.length; i++) {
-    layers[i].tweets.forEach(function(tweet) {
-      var tween = new TWEEN.Tween( tweet.obj.position )
-        .to( {z: layerSpacing-1}, 1000 )
-        .easing( TWEEN.Easing.Exponential.InOut )
-        .start();
-    });
-    var tween = new TWEEN.Tween( layers[i].ribbonObj.position )
-      .to( {z: layerSpacing-2}, 1000 )
-      .easing( TWEEN.Easing.Exponential.InOut )
-      .start();
-    layers[i].z = layerSpacing-1;
-  }
-
-}, false );
-
-var button = document.getElementById( 'stop' );
-button.addEventListener( 'click', function ( event ) {
-  keepAddingTweets = false;
-}, false );
-
 
 // left and right mouse hover buttons
 var leftHover = false;
 var rightHover = false;
 var scrollSpeed = 15;
-
-var button = document.getElementById('left');
-button.addEventListener( 'mouseover', function (event) {
-  leftHover = true;
-});
-button.addEventListener( 'mouseleave', function (event) {
-  leftHover = false;
-});
-
-var button = document.getElementById('right');
-button.addEventListener( 'mouseover', function (event) {
-  rightHover = true;
-});
-button.addEventListener( 'mouseleave', function (event) {
-  rightHover = false;
-});
-
 var tick = 0;
 
-function animate() {
-  requestAnimationFrame( animate );
-
-  tick++;
-
-  // every 60 ticks add a tweet
-  if (tick >= 30 && keepAddingTweets) {
-    console.log('hi');
-    tick = 0;
-    var newTweetIndex = layers[0].tweets.length;
-    var x = newTweetIndex;
-    if (x > 23) {
-      x = x % 23;
-    }
-    for (var j = 0; j < layers.length; j++) {
-      addTweet(tweetData[x], layers[j], newTweetIndex);
-    }
-    //var addTweet = function(rawTweet, layerObj, index)
-  }
-
-  if (leftHover) {
-    camera.position.x -= scrollSpeed;
-    controls.target.x -= scrollSpeed;
-    for (var i = 0; i < layers.length; i++) {
-      layers[i].ribbonObj.position.x -= scrollSpeed;
-    }
-  }
-  if (rightHover) {
-    camera.position.x += scrollSpeed;
-    controls.target.x += scrollSpeed;
-    for (var i = 0; i < layers.length; i++) {
-      layers[i].ribbonObj.position.x += scrollSpeed;
-    }
-  }
-  TWEEN.update();
-  controls.update();
-  render();
-}
-
-function render() {
-  renderer.render( scene, camera );
-}
-
+init();
 animate();
